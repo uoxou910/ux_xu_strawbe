@@ -1,5 +1,6 @@
 (()=>{'use strict';const S=window.SiteD,{$,$$,esc,norm,api,toast,chars,DEFAULT_COLORS,cleanColor,cardImage,uuid}=S;
 let db=S.base(),token='',mode='cards',memoTab='owned',filter='',q='',editing=null,imgBuffer='',busy=false;
+let savedSnapshot=S.base(),saveTail=Promise.resolve(),writeSeq=0,discardThrough=0;
 const authKey='site_d_demo_auth_verifier';
 function localVerifier(password){return 'demo-'+password;} // Only a UI gate, NEVER a security boundary.
 // Original images for local demo are stored as File/Blob in IndexedDB.
@@ -51,7 +52,7 @@ function loginScreen(){const demo=S.isDemo();$('#app').innerHTML=`<div class="au
 $('#login-form').onsubmit=async e=>{e.preventDefault();const pwd=$('#password').value;if(busy)return;busy=true;try{
  if(demo){let saved=localStorage.getItem(authKey);if(saved&&saved!==localVerifier(pwd))throw Error('パスワードが違います');if(!saved)localStorage.setItem(authKey,localVerifier(pwd));token='demo';}
  else{const result=await api('login',{password:pwd});if(!result?.token)throw Error('認証情報を取得できません');token=result.token;}
- db=S.sanitize(await api('admin',{},token));dashboard();
+ db=S.sanitize(await api('admin',{},token));savedSnapshot=S.sanitize(db);dashboard();
  }catch(err){$('#login-error').textContent=err.message;}finally{busy=false;}};
 }
 function dashboard(){
@@ -86,7 +87,40 @@ function updateLastSaved(){
  el.textContent=`保存:${val('month')}/${val('day')} ${val('hour')}:${val('minute')}`;
  el.title=`最終保存: ${full}`;
 }
-async function save(){if(busy)return false;busy=true;try{const result=await api('save',{data:db},token);if(result?.savedAt)db.lastSavedAt=result.savedAt;updateLastSaved();return true;}catch(err){toast('保存失敗: '+err.message);if(!S.isDemo()&&/認証|期限|ログイン|token/i.test(err.message)){token='';loginScreen();}return false;}finally{busy=false;}}
+// Writes are sent in the order the user made them. The UI is updated before awaiting GAS.
+// On failure, cancel pending writes and restore the last confirmed state.
+function save(action='save',payload={}){
+ const snapshot=S.sanitize(db),sequence=++writeSeq;
+ const task=saveTail.then(async()=>{
+  if(sequence<=discardThrough)return false;
+  try{
+   let result;
+   if(action!=='save'&&!S.isDemo()){
+    try{result=await api(action,payload,token);}
+    catch(error){
+     // Keep compatibility with the original GAS until the new backend is deployed.
+     if(!/invalid action/i.test(error.message))throw error;
+     result=await api('save',{data:snapshot},token);
+    }
+   }else result=await api('save',{data:snapshot},token);
+   savedSnapshot=S.sanitize({...snapshot,lastSavedAt:result?.savedAt||savedSnapshot.lastSavedAt});
+   db.lastSavedAt=savedSnapshot.lastSavedAt;
+   updateLastSaved();
+   return true;
+  }catch(error){
+   discardThrough=writeSeq;
+   db=S.sanitize(savedSnapshot);
+   draw();
+   toast('保存失敗: '+error.message+'（変更を取り消しました）');
+   if(!S.isDemo()&&/認証|期限|ログイン|token/i.test(error.message)){
+    token='';loginScreen();
+   }
+   return false;
+  }
+ });
+ saveTail=task.then(()=>undefined);
+ return task;
+}
 function filterbar(placeholder){return `<label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 5 5"/></svg><input id="search" type="search" placeholder="${esc(placeholder)}" autocomplete="off" value="${esc(q)}"></label>`;}
 function charOptions(){return `<div class="character-filter" id="filter-row" aria-label="キャラクターを絞り込み"><button class="filter-pill filter-all ${!filter?'active':''}" data-filter="" style="${S.characterStyle('すべて',db.colors)}">すべて</button><div class="filter-scroll" tabindex="0" aria-label="左右にスクロールしてキャラクターを選択">${chars.map(c=>`<button class="filter-pill ${filter===c?'active':''}" data-filter="${esc(c)}" style="${S.characterStyle(c,db.colors)}">${esc(c)}</button>`).join('')}</div></div>`;}
 function renderCards(){const rows=db.cards.filter(x=>(!filter||x.chara===filter)&&norm(x.code).includes(norm(q)));return `<div class="section-head"><h2>フレカ一覧 <small class="note">${rows.length}件</small></h2><button class="btn primary" data-new="cards">＋ フレカを追加</button></div>${filterbar('コーデ名で検索')}${charOptions()}<div class="admin-card-grid">${rows.length?rows.map(x=>`<article class="admin-card"><div class="admin-image" data-view-image="${esc(x.id)}">${cardImage(x.image_url,x.code)}</div><div class="admin-card-body"><div class="admin-title">${esc(x.code)}</div><div class="admin-sub">${esc(x.chara)}</div><div class="row"><button class="tiny-btn" data-edit="cards:${esc(x.id)}">編集</button><button class="tiny-btn danger" data-remove="cards:${esc(x.id)}">削除</button></div></div></article>`).join(''):'<div class="placeholder-panel">フレカがありません</div>'}</div>`;}
@@ -122,7 +156,15 @@ function draw(){if(!token)return;S.theme(filter,db.colors);$('#admin-title').tex
  $$('[data-remove-group]').forEach(b=>b.onclick=()=>removeOwnershipGroup(b.dataset.removeGroup));
  $$('[data-edit]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.edit.split(':');openForm(type,id);});
  $$('[data-remove]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.remove.split(':');remove(type,id);});
- $$('[data-check]').forEach(b=>b.onchange=async()=>{b.closest('.plan-item')?.classList.add('just-checked');const x=db.plans.find(x=>x.id===b.dataset.check);if(!x)return;const old=x.done;x.done=b.checked;if(!await save()){x.done=old;}draw();});
+ $('[data-check]').forEach(b=>b.onchange=()=>{
+  const x=db.plans.find(x=>x.id===b.dataset.check);if(!x)return;
+  x.done=b.checked;
+  const item=b.closest('.plan-item');
+  item?.classList.toggle('done',x.done);
+  item?.classList.add('just-checked');
+  // Update strikethrough immediately, regardless of network latency.
+  save('setPlanDone',{id:x.id,done:x.done});
+ });
  $$('[data-view-image]').forEach(b=>b.onclick=()=>{const x=db.cards.find(x=>x.id===b.dataset.viewImage);if(x?.image_url)showImage(x.image_url);});
  hydrateOwnedImages($('#admin-content'));
  if(memoTab==='colors'&&mode==='memo')initColors();}
@@ -186,10 +228,11 @@ function openOwnershipForm(code=''){
    if(pendingImage)db.ownedImages[nextNorm]=pendingImage;else delete db.ownedImages[nextNorm];
    try{
     if(pendingFile)await ownedBlobStore(pendingImage.slice(4),pendingFile);
-    if(await save()){
-     closeForm();draw();
-     if(previousImage&&previousImage!==pendingImage)ownedBlobDelete(previousImage).catch(console.warn);
-    }else db=S.sanitize(JSON.parse(backup));
+    const pendingSave=save();
+    closeForm();draw();
+    if(previousImage&&previousImage!==pendingImage)pendingSave.then(ok=>{
+     if(ok)ownedBlobDelete(previousImage).catch(console.warn);
+    });
    }catch(err){db=S.sanitize(JSON.parse(backup));toast('画像の保存に失敗しました: '+err.message);}
  };
 }
@@ -200,7 +243,7 @@ async function removeOwnershipGroup(code){
  db.plans.forEach(x=>{if(norm(x.code)===norm(code))x.done=false;});
  const previousImage=db.ownedImages[norm(code)]||'';
  delete db.ownedImages[norm(code)];
- if(!await save())db=S.sanitize(JSON.parse(backup));else if(previousImage)ownedBlobDelete(previousImage).catch(console.warn);draw();
+ const pendingSave=save();draw();if(previousImage)pendingSave.then(ok=>{if(ok)ownedBlobDelete(previousImage).catch(console.warn);});
 }
 function openForm(type,id=''){
  if(type==='cards'){openCardForm(id);return;}
@@ -210,7 +253,7 @@ function openForm(type,id=''){
  $('#entry-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const code=$('#entry-code').value.trim(),chara=$('#entry-chara').value;if(!code||!chars.includes(chara))return;
  const item={id:row?.id||uuid(),code,chara};if(isPlan){item.note=$('#entry-note').value.trim();item.done=row?.done||false;}
  const backup=JSON.stringify(db);if(row)Object.assign(row,item);else source.push(item);
- if(await save()){closeForm();draw();}else db=S.sanitize(JSON.parse(backup));};
+ save(isPlan?'upsertPlan':'save',isPlan?{plan:item}:{});closeForm();draw();};
 }
 function openCardForm(id=''){
  const existing=db.cards.find(x=>x.id===id);
@@ -290,8 +333,7 @@ function openCardForm(id=''){
     const old=db.cards.find(c=>c.id===row.id);if(old)Object.assign(old,card);else db.cards.push(card);
    }
    db.lastCardsUpdated=now;
-   if(await save()){closeCard();draw();}
-   else db=S.sanitize(JSON.parse(snapshot));
+   save();closeCard();draw();
   }catch(err){toast('画像アップロード失敗: '+err.message);}
   finally{if(button.isConnected){button.disabled=false;button.textContent=buttonLabel;}submitting=false;}
  };
@@ -327,7 +369,7 @@ async function resizeOwnedImage(file){
  });
 }
 async function resize(file){if(!file.type.startsWith('image/'))throw Error('画像を指定してください');if(file.size>16*1024*1024)throw Error('画像は16MB以下にしてください');return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=()=>reject(Error('画像を読み込めません'));r.onload=()=>{const image=new Image();image.onerror=()=>reject(Error('画像形式が不正です'));image.onload=()=>{const canvas=document.createElement('canvas');const ratio=Math.min(1,900/Math.max(image.width,image.height));canvas.width=Math.max(1,Math.round(image.width*ratio));canvas.height=Math.max(1,Math.round(image.height*ratio));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.76));};image.src=r.result;};r.readAsDataURL(file);});}
-async function remove(type,id){const list=db[type],idx=list.findIndex(x=>x.id===id);if(idx<0||!confirm('「'+list[idx].code+'」を削除しますか？'))return;const backup=JSON.stringify(db);list.splice(idx,1);if(type==='cards')db.lastCardsUpdated=new Date().toISOString();if(!await save())db=S.sanitize(JSON.parse(backup));draw();}
+async function remove(type,id){const list=db[type],idx=list.findIndex(x=>x.id===id);if(idx<0||!confirm('「'+list[idx].code+'」を削除しますか？'))return;const backup=JSON.stringify(db);list.splice(idx,1);if(type==='cards')db.lastCardsUpdated=new Date().toISOString();save();draw();}
 function initColors(){
  const pending=JSON.parse(JSON.stringify(db.colors));
  const get=c=>S.colorSpec(pending[c],DEFAULT_COLORS[c]);
@@ -355,7 +397,7 @@ function initColors(){
  $('#save-colors').onclick=async()=>{
   for(const el of $$('[data-hex]'))if(!cleanColor(el.value)){toast('カラーコードは #RRGGBB で入力してください');el.focus();return;}
   const backup=JSON.parse(JSON.stringify(db.colors));db.colors=pending;
-  if(await save()){S.theme('',db.colors);draw();}else db.colors=backup;
+  save();S.theme('',db.colors);draw();
  };
 }
 if(S.isDemo() && /^https?:$/.test(location.protocol) && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) {
