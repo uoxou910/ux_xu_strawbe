@@ -217,7 +217,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .plan-item input[type=checkbox] { flex:0 0 auto; width:19px; height:19px; accent-color:#655d70; cursor:pointer; }
 .plan-content { min-width:0; flex:1; overflow:hidden; }
 .plan-item .name { color:#33303b; font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.plan-item.done .name { text-decoration:line-through; color:#8b8791; }
+
 .plan-note { font-size:12px; margin-top:3px; color:#898590; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .plan-actions { flex:0 0 auto; display:flex; align-items:center; gap:0; flex-wrap:nowrap; }
 .plan-actions .tiny-btn { font-size:11px; padding:8px 11px; min-width:40px; }
