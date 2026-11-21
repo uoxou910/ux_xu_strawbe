@@ -193,7 +193,7 @@ function draw(){if(!token)return;S.theme(filter,db.colors);$('#admin-title').tex
    input.addEventListener('compositionend',()=>{composing=false;requestAnimationFrame(commit);});
    input.addEventListener('input',e=>{if(composing||e.isComposing)return;commit();});
   }
- $$('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;draw();});
+ $$('[data-filter]').forEach(b=>b.onclick=()=>{const x=$('.filter-scroll')?.scrollLeft??0;filter=b.dataset.filter;draw();const scroller=$('.filter-scroll');if(scroller)scroller.scrollLeft=x;});
  $$('[data-new]').forEach(b=>b.onclick=()=>b.dataset.new==='owned-group'?openOwnershipForm():openForm(b.dataset.new));
  $$('[data-edit-group]').forEach(b=>b.onclick=()=>openOwnershipForm(b.dataset.editGroup));
  $$('[data-remove-group]').forEach(b=>b.onclick=()=>removeOwnershipGroup(b.dataset.removeGroup));
