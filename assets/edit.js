@@ -217,9 +217,12 @@ function openCardForm(id=''){
  const defaultChara=existing?.chara||filter||chars[0];
  let entries=existing?[{key:uuid(),id:existing.id,code:existing.code||'',chara:defaultChara,image:existing.image_url||''}]:[];
  const single=!!existing,demo=S.isDemo();
- const fileInput=demo?'<input id="card-files" type="file" accept="image/png,image/jpeg,image/webp,image/gif" '+(single?'':'multiple')+' hidden>':'';
- const urlMode=demo?'':`<div class="card-upload-url"><input id="image-url" type="url" placeholder="画像URL（https://…）" autocomplete="url"><button class="btn" type="button" id="url-add">追加</button></div>`;
- $('#dialog-host').innerHTML=`<div class="dialog-shade" id="dialog-shade"><section class="dialog card-entry-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="row between dialog-heading"><h2 id="dialog-title">${single?'フレカを編集':'フレカを追加'}</h2><button class="dialog-x" id="dialog-close" type="button" aria-label="閉じる">×</button></div><form id="card-form"><div class="card-upload-zone" id="upload-zone" ${demo?'role="button" tabindex="0"':''}><span class="upload-symbol">＋</span><strong>${demo?'画像を選択':'画像URLを登録'}</strong>${demo?'<span class="upload-hint">またはここにドロップ</span>':''}</div>${fileInput}${urlMode}<div id="upload-entries" class="upload-entries"></div><div class="dialog-actions ${single?'':'hidden'}" id="card-submit-actions"><button class="btn primary" type="submit">保存</button></div></form></section></div>`;
+ let submitting=false;
+ const previewUrls=new Set();
+ const closeCard=()=>{for(const u of previewUrls)URL.revokeObjectURL(u);previewUrls.clear();closeForm();};
+ const fileInput='<input id="card-files" type="file" accept="image/png,image/jpeg,image/webp,image/gif" '+(single?'':'multiple')+' hidden>'; 
+ const urlMode='';
+ $('#dialog-host').innerHTML=`<div class="dialog-shade" id="dialog-shade"><section class="dialog card-entry-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="row between dialog-heading"><h2 id="dialog-title">${single?'フレカを編集':'フレカを追加'}</h2><button class="dialog-x" id="dialog-close" type="button" aria-label="閉じる">×</button></div><form id="card-form"><div class="card-upload-zone" id="upload-zone" role="button" tabindex="0"><span class="upload-symbol">＋</span><strong>画像を選択</strong><span class="upload-hint">またはここにドロップ</span></div>${fileInput}${urlMode}<div id="upload-entries" class="upload-entries"></div><div class="dialog-actions ${single?'':'hidden'}" id="card-submit-actions"><button class="btn primary" type="submit">保存</button></div></form></section></div>`;
  const root=$('#dialog-host');
  const paint=()=>{
   $('#upload-entries').innerHTML=entries.map((row,i)=>`<div class="upload-entry" data-entry="${esc(row.key)}"><div class="upload-thumb">${row.image?`<img src="${esc(row.image)}" alt="画像プレビュー">`:'<span>画像なし</span>'}</div><div class="upload-fields"><input data-code="${esc(row.key)}" maxlength="120" aria-label="${i+1}件目のコーデ名" placeholder="コーデ名" value="${esc(row.code)}" required><select data-chara="${esc(row.key)}" aria-label="${i+1}件目のマイキャラ">${chars.map(c=>`<option value="${esc(c)}" ${c===row.chara?'selected':''}>${esc(c)}</option>`).join('')}</select></div>${!single&&entries.length>1?`<button type="button" data-remove-entry="${esc(row.key)}" class="upload-remove" aria-label="${i+1}件目を削除">×</button>`:''}</div>`).join('');
@@ -230,19 +233,22 @@ function openCardForm(id=''){
  };
  const addFiles=async files=>{
   const list=[...files];if(!list.length)return;
-  if(!demo){toast('本番画像アップロードは未設定です。画像URLを登録してください');return;}
+  
   const zone=$('#upload-zone');zone.classList.add('upload-busy');
   for(const file of list){try{
-   const img=await resize(file);
-   if(single){entries[0].image=img;}
-   else entries.push({key:uuid(),id:'',code:'',chara:filter||chars[0],image:img});
+   if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type))throw Error('PNG・JPEG・WebP・GIFを選択してください');
+   if(file.size>8*1024*1024)throw Error('画像は8MB以下にしてください');
+   const img=demo?await resize(file):URL.createObjectURL(file);
+   if(!demo)previewUrls.add(img);
+   if(single){entries[0].image=img;entries[0].file=demo?null:file;}
+   else entries.push({key:uuid(),id:'',code:'',chara:filter||chars[0],image:img,file:demo?null:file});
   }catch(err){toast(err.message);}}
   if(zone.isConnected)zone.classList.remove('upload-busy');
   paint();$('#upload-entries [data-code]')?.focus();
  };
- $('#dialog-close').onclick=closeForm;
- $('#dialog-shade').onclick=e=>{if(e.target.id==='dialog-shade')closeForm();};
- if(demo){
+ $('#dialog-close').onclick=closeCard;
+ $('#dialog-shade').onclick=e=>{if(e.target.id==='dialog-shade')closeCard();};
+ {
   $('#upload-zone').onclick=()=>$('#card-files').click();
   $('#upload-zone').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('#card-files').click();}};
   $('#card-files').onchange=e=>{addFiles(e.target.files);e.target.value='';};
@@ -250,16 +256,44 @@ function openCardForm(id=''){
   zone.ondragover=e=>{e.preventDefault();zone.classList.add('dragging');};
   zone.ondragleave=()=>zone.classList.remove('dragging');
   zone.ondrop=e=>{e.preventDefault();zone.classList.remove('dragging');addFiles(e.dataTransfer.files);};
- }else{
-  $('#upload-zone').style.cursor='default';
-  $('#url-add').onclick=()=>{const url=$('#image-url').value.trim();if(!/^https:\/\//i.test(url)){toast('https://の画像URLを入力してください');return;}if(single)entries[0].image=url;else entries.push({key:uuid(),id:'',code:'',chara:filter||chars[0],image:url});$('#image-url').value='';paint();};
  }
- $('#card-form').onsubmit=async e=>{e.preventDefault();if(busy)return;const snapshot=JSON.stringify(db);
-  const valid=entries.map(x=>({...x,code:x.code.trim()}));if(!valid.length){toast('画像を追加してください');return;}if(valid.some(x=>!x.code||!chars.includes(x.chara))){toast('各コーデの名前とマイキャラを入力してください');return;}
-  const now=new Date().toISOString();
-  for(const row of valid){const card={id:row.id||uuid(),code:row.code,chara:row.chara,image_url:row.image,updated_at:now};const old=db.cards.find(c=>c.id===row.id);if(old)Object.assign(old,card);else db.cards.push(card);}
-  db.lastCardsUpdated=now;
-  if(await save()){closeForm();draw();}else db=S.sanitize(JSON.parse(snapshot));
+ $('#card-form').onsubmit=async e=>{e.preventDefault();if(busy||submitting)return;
+  const valid=entries.map(x=>({...x,code:x.code.trim()}));
+  if(!valid.length){toast('画像を追加してください');return;}
+  if(valid.some(x=>!x.code||!chars.includes(x.chara))){toast('各コーデの名前とマイキャラを入力してください');return;}
+  submitting=true;
+  const button=$('#card-submit-actions button[type="submit"]');
+  button.disabled=true;
+  const buttonLabel=button.textContent;
+  try{
+   if(!demo){
+    let n=0;const total=valid.filter(x=>x.file).length;
+    for(const row of valid){
+     if(!row.file)continue;
+     button.textContent=`画像をアップロード中 ${++n}/${total}`;
+     const raw=await new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onerror=()=>reject(Error('画像を読み込めませんでした'));
+      reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');
+      reader.readAsDataURL(row.file);
+     });
+     const result=await api('uploadImage',{filename:row.file.name,mimeType:row.file.type,base64:raw},token);
+     if(!result?.url||!/^https:\/\//.test(result.url))throw Error('画像URLが取得できませんでした');
+     row.image=result.url;
+     const original=entries.find(x=>x.key===row.key);
+     if(original){original.image=row.image;original.file=null;}
+    }
+   }
+   button.textContent='保存中';
+   const snapshot=JSON.stringify(db),now=new Date().toISOString();
+   for(const row of valid){
+    const card={id:row.id||uuid(),code:row.code,chara:row.chara,image_url:row.image,updated_at:now};
+    const old=db.cards.find(c=>c.id===row.id);if(old)Object.assign(old,card);else db.cards.push(card);
+   }
+   db.lastCardsUpdated=now;
+   if(await save()){closeCard();draw();}
+   else db=S.sanitize(JSON.parse(snapshot));
+  }catch(err){toast('画像アップロード失敗: '+err.message);}
+  finally{if(button.isConnected){button.disabled=false;button.textContent=buttonLabel;}submitting=false;}
  };
  paint();
 }
