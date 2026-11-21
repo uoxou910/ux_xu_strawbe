@@ -159,7 +159,7 @@ function draw(){if(!token)return;S.theme(filter,db.colors);$('#admin-title').tex
  $$('[data-remove-group]').forEach(b=>b.onclick=()=>removeOwnershipGroup(b.dataset.removeGroup));
  $$('[data-edit]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.edit.split(':');openForm(type,id);});
  $$('[data-remove]').forEach(b=>b.onclick=()=>{const [type,id]=b.dataset.remove.split(':');remove(type,id);});
- $('[data-check]').forEach(b=>b.onchange=()=>{
+ $$('[data-check]').forEach(b=>b.onchange=()=>{
   const x=db.plans.find(x=>x.id===b.dataset.check);if(!x)return;
   x.done=b.checked;
   b.closest('.plan-item')?.classList.add('just-checked');
