@@ -656,6 +656,8 @@ body[data-page="edit"] .admin-shell .search:focus-within {
 /* Use identical SVG rectangles for all three menu strokes. */
 .hamburger .hamburger-lines {width:24px;height:24px;display:block;flex:none;stroke:none;fill:currentColor;}
 .hamburger .hamburger-lines rect {fill:currentColor;stroke:none;}
+ /* The X occupies the same spot as the hamburger; hide the underlying three bars while open. */
+.hamburger[aria-expanded="true"] .hamburger-lines {opacity:0;visibility:hidden;}
 /* Single image per outfit, aligned to the left of the existing ownership detail. */
 .owned-card-layout {display:flex;align-items:flex-start;gap:14px;min-width:0;}
 .owned-info {flex:1;min-width:0;}
