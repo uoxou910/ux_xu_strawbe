@@ -183,8 +183,30 @@ function renderColors(){
  <div class="color-control second-color ${t.mode==='solid'?'hidden':''}"><input type="color" data-picker="${esc(c)}" data-stop="second" value="${esc(t.second)}"><input type="text" data-hex="${esc(c)}" data-stop="second" value="${esc(t.second)}" maxlength="7" aria-label="${esc(c)}のカラー2"></div>
  <div class="color-sample" style="--sample:${esc(mixed)};--sample-on:${S.colorInfo(t.mode==='gradient'?S.themeMain(t):t.first).on}">サンプル文字 Aa</div></div>`}).join('')}</div>`;
 }
-function draw(){if(!token)return;S.theme(filter,db.colors);$('#admin-title').textContent=mode==='cards'?'フレカ管理':memoTab==='colors'?'カラー設定':'フレカ印刷メモ';
- $$('[data-menu-screen]').forEach(b=>b.classList.toggle('selected',b.dataset.menuScreen===(mode==='cards'?'cards':memoTab==='colors'?'colors':'plans')));$('#admin-content').innerHTML=mode==='cards'?renderCards():`${memoTab==='colors'?'':`<div class="sub-tabs"><button class="sub-tab ${memoTab==='owned'?'active':''}" data-tab="owned">所持コーデ</button><button class="sub-tab ${memoTab==='plans'?'active':''}" data-tab="plans">印刷予定</button></div>`}${memoTab==='owned'?renderOwned():memoTab==='plans'?renderPlans():renderColors()}`;
+// Leave the horizontal filter element mounted during character selection.
+// Recreating it resets the user's scroll position even if scrollLeft is later restored.
+function setAdminContent(html,preserveFilter){
+ const host=$('#admin-content');
+ const current=preserveFilter?$('#filter-row',host):null;
+ if(!current){host.innerHTML=html;return;}
+ const template=document.createElement('template');
+ template.innerHTML=html;
+ const nextRow=template.content.querySelector('#filter-row');
+ const newNodes=[...template.content.childNodes];
+ const index=newNodes.indexOf(nextRow);
+ if(index<0){host.innerHTML=html;return;}
+ // Do not remove the current filter row from the document at any point.
+ for(const node of [...host.childNodes])if(node!==current)node.remove();
+ current.before(...newNodes.slice(0,index));
+ current.after(...newNodes.slice(index+1));
+ $$('[data-filter]',current).forEach(button=>{
+  button.classList.toggle('active',button.dataset.filter===filter);
+  button.style.cssText=S.characterStyle(button.dataset.filter||'すべて',db.colors);
+ });
+}
+function draw(preserveFilter=false){if(!token)return;S.theme(filter,db.colors);$('#admin-title').textContent=mode==='cards'?'フレカ管理':memoTab==='colors'?'カラー設定':'フレカ印刷メモ';
+ $$('[data-menu-screen]').forEach(b=>b.classList.toggle('selected',b.dataset.menuScreen===(mode==='cards'?'cards':memoTab==='colors'?'colors':'plans')));
+ setAdminContent(mode==='cards'?renderCards():`${memoTab==='colors'?'':`<div class="sub-tabs"><button class="sub-tab ${memoTab==='owned'?'active':''}" data-tab="owned">所持コーデ</button><button class="sub-tab ${memoTab==='plans'?'active':''}" data-tab="plans">印刷予定</button></div>`}${memoTab==='owned'?renderOwned():memoTab==='plans'?renderPlans():renderColors()}`,preserveFilter);
  $$('[data-tab]').forEach(b=>b.onclick=()=>{memoTab=b.dataset.tab;filter='';q='';draw();});
  const input=$('#search');if(input){
    let composing=false;
@@ -193,7 +215,7 @@ function draw(){if(!token)return;S.theme(filter,db.colors);$('#admin-title').tex
    input.addEventListener('compositionend',()=>{composing=false;requestAnimationFrame(commit);});
    input.addEventListener('input',e=>{if(composing||e.isComposing)return;commit();});
   }
- $$('[data-filter]').forEach(b=>b.onclick=()=>{const x=$('.filter-scroll')?.scrollLeft??0;filter=b.dataset.filter;draw();const scroller=$('.filter-scroll');if(scroller)scroller.scrollLeft=x;});
+ $$('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;draw(true);});
  $$('[data-new]').forEach(b=>b.onclick=()=>b.dataset.new==='owned-group'?openOwnershipForm():openForm(b.dataset.new));
  $$('[data-edit-group]').forEach(b=>b.onclick=()=>openOwnershipForm(b.dataset.editGroup));
  $$('[data-remove-group]').forEach(b=>b.onclick=()=>removeOwnershipGroup(b.dataset.removeGroup));
