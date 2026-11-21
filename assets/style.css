@@ -171,6 +171,11 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .login-panel .btn { margin-top:4px; min-height:44px; }
 .login-panel > .note:last-child { margin-top:22px; }
 .login-panel a { color:#4c4359; text-underline-offset:4px; }
+.login-panel .password-control{display:block;position:relative;width:100%;}
+.login-panel .password-control input{padding-right:58px;}
+.login-panel .password-peek{position:absolute;top:0;right:0;bottom:0;width:52px;display:grid;place-items:center;border:0;border-radius:0 10px 10px 0;background:transparent;color:#77717e;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;padding:0;}
+.login-panel .password-peek[aria-pressed="true"]{color:#28252e;}
+.login-panel .password-peek:focus-visible{outline:2px solid #777086;outline-offset:-3px;}
 .field { display:grid; gap:8px; margin:18px 0; font-size:12px; font-weight:650; color:#5d5865; }
 .field input,.field select,.field textarea { width:100%; min-height:48px; border:0; border-radius:10px; background:var(--surface-soft); color:#28252e; padding:12px 14px; font-size:16px; outline:0; }
 .field textarea { min-height:100px; resize:vertical; line-height:1.7; }
