@@ -49,7 +49,22 @@ function hydrateOwnedImages(root=document){
   try{const url=await ownedImageURL(key);if(img.isConnected&&img.dataset.ownedOriginal===key)img.src=url;}catch(e){console.warn('所持コーデ画像を読み込めません',e);}
  });
 }
-function loginScreen(){const demo=S.isDemo();$('#app').innerHTML=`<div class="auth-screen"><div class="login-panel"><h1>フレカ管理ログイン</h1><p class="note">${demo?'ローカル試作モード：最初のログイン時にデモ用パスワードを設定します。公開用の安全な認証ではありません。':'管理パスワードを入力してください。認証はGAS側で検証します。'}</p><form id="login-form"><label class="field">パスワード<input type="password" required minlength="4" autocomplete="current-password" id="password"></label><button class="btn primary" type="submit">${demo?'デモ管理画面を開く':'ログイン'}</button><p class="note" id="login-error"></p></form><p class="note"><a href="index.html">フレカ閲覧ページに戻る</a></p></div></div>`;
+function loginScreen(){const demo=S.isDemo();$('#app').innerHTML=`<div class="auth-screen"><div class="login-panel"><h1>フレカ管理ログイン</h1><p class="note">${demo?'ローカル試作モード：最初のログイン時にデモ用パスワードを設定します。公開用の安全な認証ではありません。':'管理パスワードを入力してください。'}</p><form id="login-form"><label class="field">パスワード<span class="password-control"><input type="password" required minlength="4" autocomplete="current-password" id="password"><button id="password-peek" class="password-peek" type="button" aria-label="押している間パスワードを表示" title="押している間パスワードを表示"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label><button class="btn primary" type="submit">${demo?'デモ管理画面を開く':'ログイン'}</button><p class="note" id="login-error"></p></form><p class="note"><a href="index.html">フレカ閲覧ページに戻る</a></p></div></div>`;
+const secretInput=$('#password'),peekButton=$('#password-peek');
+const revealPassword=visible=>{
+  if(!secretInput.isConnected)return;
+  secretInput.type=visible?'text':'password';
+  peekButton.setAttribute('aria-pressed',String(visible));
+};
+peekButton.addEventListener('pointerdown',e=>{if(e.button!==0 && e.pointerType==='mouse')return;e.preventDefault();revealPassword(true);});
+peekButton.addEventListener('pointerup',()=>revealPassword(false));
+peekButton.addEventListener('pointercancel',()=>revealPassword(false));
+peekButton.addEventListener('pointerleave',()=>revealPassword(false));
+window.addEventListener('pointerup',()=>revealPassword(false),{signal:undefined});
+peekButton.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();revealPassword(true);}});
+peekButton.addEventListener('keyup',e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();revealPassword(false);}});
+peekButton.addEventListener('blur',()=>revealPassword(false));
+window.addEventListener('blur',()=>revealPassword(false));
 $('#login-form').onsubmit=async e=>{e.preventDefault();const pwd=$('#password').value;if(busy)return;
  busy=true;
  const submit=$('#login-form button[type="submit"]'),errorLabel=$('#login-error');
