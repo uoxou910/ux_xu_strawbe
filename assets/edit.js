@@ -1,6 +1,7 @@
 (()=>{'use strict';const S=window.SiteD,{$,$$,esc,norm,api,toast,chars,DEFAULT_COLORS,cleanColor,cardImage,uuid}=S;
 let db=S.base(),token='',mode='cards',memoTab='owned',filter='',q='',editing=null,imgBuffer='',busy=false;
-let savedSnapshot=S.base(),saveTail=Promise.resolve(),writeSeq=0,discardThrough=0;
+let savedSnapshot=S.base(),saveTail=Promise.resolve(),writeSeq=0,discardThrough=0,pendingWrites=0;
+window.addEventListener('beforeunload',e=>{if(pendingWrites){e.preventDefault();e.returnValue='';}});
 const authKey='site_d_demo_auth_verifier';
 function localVerifier(password){return 'demo-'+password;} // Only a UI gate, NEVER a security boundary.
 // Original images for local demo are stored as File/Blob in IndexedDB.
@@ -79,6 +80,7 @@ function dashboard(){
 }
 function updateLastSaved(){
  const el=$('#last-saved');if(!el)return;
+ if(pendingWrites){el.textContent='保存中…';return;}
  const d=db.lastSavedAt?new Date(db.lastSavedAt):null;
  if(!d||!Number.isFinite(d.getTime())){el.textContent='保存:未記録';el.removeAttribute('title');return;}
  const parts=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d);
@@ -91,6 +93,7 @@ function updateLastSaved(){
 // On failure, cancel pending writes and restore the last confirmed state.
 function save(action='save',payload={}){
  const snapshot=S.sanitize(db),sequence=++writeSeq;
+ pendingWrites++;updateLastSaved();
  const task=saveTail.then(async()=>{
   if(sequence<=discardThrough)return false;
   try{
@@ -116,7 +119,7 @@ function save(action='save',payload={}){
     token='';loginScreen();
    }
    return false;
-  }
+  }finally{pendingWrites--;updateLastSaved();}
  });
  saveTail=task.then(()=>undefined);
  return task;
