@@ -50,11 +50,36 @@ function hydrateOwnedImages(root=document){
  });
 }
 function loginScreen(){const demo=S.isDemo();$('#app').innerHTML=`<div class="auth-screen"><div class="login-panel"><h1>フレカ管理ログイン</h1><p class="note">${demo?'ローカル試作モード：最初のログイン時にデモ用パスワードを設定します。公開用の安全な認証ではありません。':'管理パスワードを入力してください。認証はGAS側で検証します。'}</p><form id="login-form"><label class="field">パスワード<input type="password" required minlength="4" autocomplete="current-password" id="password"></label><button class="btn primary" type="submit">${demo?'デモ管理画面を開く':'ログイン'}</button><p class="note" id="login-error"></p></form><p class="note"><a href="index.html">フレカ閲覧ページに戻る</a></p></div></div>`;
-$('#login-form').onsubmit=async e=>{e.preventDefault();const pwd=$('#password').value;if(busy)return;busy=true;try{
- if(demo){let saved=localStorage.getItem(authKey);if(saved&&saved!==localVerifier(pwd))throw Error('パスワードが違います');if(!saved)localStorage.setItem(authKey,localVerifier(pwd));token='demo';}
- else{const result=await api('login',{password:pwd});if(!result?.token)throw Error('認証情報を取得できません');token=result.token;}
- db=S.sanitize(await api('admin',{},token));savedSnapshot=S.sanitize(db);dashboard();
- }catch(err){$('#login-error').textContent=err.message;}finally{busy=false;}};
+$('#login-form').onsubmit=async e=>{e.preventDefault();const pwd=$('#password').value;if(busy)return;
+ busy=true;
+ const submit=$('#login-form button[type="submit"]'),errorLabel=$('#login-error');
+ const originalLabel=submit.textContent;
+ submit.disabled=true;submit.textContent='ログイン中…';errorLabel.textContent='';
+ try{
+  let adminData=null;
+  if(demo){
+   const saved=localStorage.getItem(authKey);
+   if(saved&&saved!==localVerifier(pwd))throw Error('パスワードが違います');
+   if(!saved)localStorage.setItem(authKey,localVerifier(pwd));
+   token='demo';
+  }else{
+   // New GAS returns both token and admin data in a single response.
+   // Old GAS ignores includeAdmin; retain the existing two-request fallback.
+   const result=await api('login',{password:pwd,includeAdmin:true});
+   if(!result?.token)throw Error('認証情報を取得できません');
+   token=result.token;
+   if(result.admin && typeof result.admin==='object' && Array.isArray(result.admin.cards) &&
+       Array.isArray(result.admin.owned) && Array.isArray(result.admin.plans) &&
+       result.admin.colors && typeof result.admin.colors==='object')adminData=result.admin;
+  }
+  if(!adminData){
+   submit.textContent='データを読み込み中…';
+   adminData=await api('admin',{},token);
+  }
+  db=S.sanitize(adminData);savedSnapshot=S.sanitize(db);dashboard();
+ }catch(err){errorLabel.textContent=err.message;}
+ finally{busy=false;if(submit.isConnected){submit.disabled=false;submit.textContent=originalLabel;}}
+};
 }
 function dashboard(){
  S.theme('',db.colors);
