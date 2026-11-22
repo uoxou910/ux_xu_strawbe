@@ -459,7 +459,11 @@ function initColors(){
  $('#save-colors').onclick=async()=>{
   for(const el of $$('[data-hex]'))if(!cleanColor(el.value)){toast('カラーコードは #RRGGBB で入力してください');el.focus();return;}
   const backup=JSON.parse(JSON.stringify(db.colors));db.colors=pending;
-  save();S.theme('',db.colors);draw();
+  const savedColors=JSON.parse(JSON.stringify(pending));
+  save().then(ok=>{
+   if(ok){try{localStorage.setItem('site_d_public_colors_v1',JSON.stringify({colors:savedColors,syncedAt:Date.now()}));}catch(_){}}
+  });
+  S.theme('',db.colors);draw();
  };
 }
 if(S.isDemo() && /^https?:$/.test(location.protocol) && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) {
