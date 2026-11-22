@@ -1,5 +1,17 @@
 (async()=>{'use strict';const S=window.SiteD,{ $, $$, esc,norm,api,cardImage,buildCharacterNav,theme,toast}=S;
-let cards=[],colors={...S.DEFAULT_COLORS},character='',query='',page=1,lastCardsUpdated='';const PAGE=20;
+const COLOR_CACHE_KEY='site_d_public_colors_v1';
+function initialPublicColors(){
+ const boot=window.SITE_D_BOOTSTRAP_COLORS||{};
+ const bootTime=Date.parse(boot.syncedAt||'')||0;
+ let initial={...S.DEFAULT_COLORS,...(boot.colors||{})};
+ try{
+  const stored=JSON.parse(localStorage.getItem(COLOR_CACHE_KEY)||'null');
+  if(stored?.colors && Number(stored.syncedAt)>bootTime)
+   initial={...initial,...stored.colors};
+ }catch(_){}
+ return initial;
+}
+let cards=[],colors=initialPublicColors(),character='',query='',page=1,lastCardsUpdated='';const PAGE=20;
 function dateUpdate(){
  const timestamps=[Date.parse(lastCardsUpdated||''),...cards.map(x=>Date.parse(x.updated_at||x.created_at||''))].filter(Number.isFinite);
  if(!timestamps.length)return '更新:未記録';
@@ -22,8 +34,8 @@ menuBtn.onclick=()=>toggleMenu(!menuPanel.classList.contains('is-open'));
 menuScrim.onclick=()=>toggleMenu(false);
 $('#drawer-close').onclick=()=>toggleMenu(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')toggleMenu(false);});
-const navRoot=$('#character-navigation');navRoot.style.visibility='hidden';
-const nav=buildCharacterNav(c=>{character=c;page=1;render();},{colors});navRoot.innerHTML=nav.html;
+const navRoot=$('#character-navigation');
+const nav=buildCharacterNav(c=>{character=c;page=1;render();},{colors});navRoot.innerHTML=nav.html;const navActions=nav.init(navRoot);
 function pages(current,total){if(total<=7)return Array.from({length:total},(_,i)=>i+1);const out=[1];let a=Math.max(2,current-1),b=Math.min(total-1,current+1);if(current<=3){a=2;b=4;}else if(current>=total-2){a=total-3;b=total-1;}if(a>2)out.push('…');for(let i=a;i<=b;i++)out.push(i);if(b<total-1)out.push('…');out.push(total);return out;}
 function render(){const filtered=cards.filter(x=>(!character||x.chara===character)&&(!query||norm(x.code).includes(norm(query))));const total=Math.max(1,Math.ceil(filtered.length/PAGE));page=Math.min(page,total);const rows=filtered.slice((page-1)*PAGE,page*PAGE);
 $('#grid').innerHTML=rows.length?rows.map(x=>`<article class="freca-card" data-id="${esc(x.id)}" style="--stagger:${Math.min(rows.indexOf(x),9)*32}ms"><div class="card-picture" data-id="${esc(x.id)}">${cardImage(x.image_url,x.code)}</div><div class="card-detail"><div class="card-chara">${esc(x.chara)}</div><div class="card-code">${esc(x.code)}</div></div></article>`).join(''):'<div class="placeholder-panel">カードがありません</div>';
@@ -31,7 +43,17 @@ $('#pager').innerHTML=total<=1?'':`<button data-page="${page-1}" ${page===1?'dis
 $$('#pager [data-page]').forEach(b=>b.addEventListener('click',()=>{if(b.disabled)return;page=+b.dataset.page;render();scrollTo({top:0,behavior:'smooth'});}));
 $$('.card-picture').forEach(el=>el.addEventListener('click',()=>{const x=cards.find(x=>String(x.id)===el.dataset.id);if(!x?.image_url)return;$('#full-image').src=x.image_url;$('#overlay').classList.remove('hidden');}));}
 $('#query').addEventListener('input',e=>{query=e.target.value;page=1;render();});$('#close').onclick=()=>$('#overlay').classList.add('hidden');$('#overlay').onclick=e=>{if(e.target.id==='overlay')$('#overlay').classList.add('hidden');};document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#overlay').classList.add('hidden')});
-try{const d=await api('public');cards=(Array.isArray(d.cards)?d.cards:[]).filter(x=>x&&typeof x.code==='string');Object.assign(colors,d.colors||{});lastCardsUpdated=d.lastCardsUpdated||'';
-// Apply the saved colors before the navigation is painted. No flash of default colors.
-nav.init(navRoot);navRoot.style.visibility='';$('#update').textContent=dateUpdate();render();}catch(e){console.error(e);nav.init(navRoot);navRoot.style.visibility='';$('#grid').innerHTML=`<div class="placeholder-panel">読み込みに失敗しました。<br>${esc(e.message)}</div>`;}
+try{
+ const d=await api('public');
+ cards=(Array.isArray(d.cards)?d.cards:[]).filter(x=>x&&typeof x.code==='string');
+ if(d.colors&&typeof d.colors==='object'){
+  const fresh={...S.DEFAULT_COLORS,...d.colors};
+  if(JSON.stringify(colors)!==JSON.stringify(fresh)){
+   colors=fresh;navActions.updateColors(colors);
+  }
+  try{localStorage.setItem(COLOR_CACHE_KEY,JSON.stringify({colors:fresh,syncedAt:Date.now()}));}catch(_){}
+ }
+ lastCardsUpdated=d.lastCardsUpdated||'';
+ $('#update').textContent=dateUpdate();render();
+}catch(e){console.error(e);$('#grid').innerHTML=`<div class="placeholder-panel">読み込みに失敗しました。<br>${esc(e.message)}</div>`;}
 })();
