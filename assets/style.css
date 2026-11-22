@@ -728,3 +728,161 @@ body[data-page="edit"] .admin-shell .search:focus-within {
  .ownership-image-preview{flex-basis:105px;width:105px;max-height:145px}
  .ownership-image-preview img{max-height:145px}
 }
+
+/* Site D only: scale the complete mobile search dock and bottom character bar. */
+@media (max-width:699px) {
+  body[data-page="view"] .search-dock {
+    padding-top:13.5px;
+    padding-bottom:13.5px;
+  }
+  body[data-page="view"] .search-dock > .search {
+    height:39px;
+    min-height:39px;
+  }
+  body[data-page="view"] .bottom-nav {
+    height:calc(46px + env(safe-area-inset-bottom,0px));
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    box-sizing:border-box;
+  }
+  body[data-page="view"] .bottom-nav-inner {
+    height:46px;
+  }
+  body[data-page="view"] .bottom-all,
+  body[data-page="view"] .bottom-char {
+    min-height:0;
+    padding-top:4px;
+    padding-bottom:4px;
+  }
+  body[data-page="view"] {
+    padding-bottom:calc(70px + env(safe-area-inset-bottom,0px));
+  }
+}
+
+/* Site D mobile viewer: only the search field floats; no opaque sticky band. */
+@media (max-width:699px) {
+  body[data-page="view"] .search-dock {
+    background:transparent;
+    border:0;
+    box-shadow:none;
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+  }
+  body[data-page="view"] .search-dock > .search {
+    position:relative;
+    background:rgba(250,249,252,.86);
+    border-radius:var(--radius-medium);
+    box-shadow:0 8px 26px rgba(39,32,49,.14),0 2px 7px rgba(39,32,49,.05);
+    -webkit-backdrop-filter:blur(17px) saturate(1.15);
+    backdrop-filter:blur(17px) saturate(1.15);
+  }
+  body[data-page="view"] .search-dock > .search:focus-within {
+    background:rgba(250,248,253,.92);
+    box-shadow:0 9px 28px rgba(39,32,49,.17),inset 0 -2px #777086;
+  }
+}
+
+
+
+/* Site D management header: same add-card action placement as Sites A/B. */
+body[data-page="edit"] .site-d-header-add {
+ flex:0 0 auto;
+ min-height:40px;
+ padding:9px 14px;
+ white-space:nowrap;
+ font-size:12px;
+}
+@media (max-width:699px) {
+ body[data-page="edit"] .site-d-header-add {
+  min-height:38px;
+  padding:8px 11px;
+  font-size:11px;
+ }
+}
+@media (max-width:540px) {
+ body[data-page="edit"] .header-inner {
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:0;
+  padding:9px 12px 10px;
+ }
+ body[data-page="edit"] .header-inner > .app-title {font-size:16px;}
+ body[data-page="edit"] .header-actions {
+  justify-content:flex-end;
+  width:100%;
+  gap:7px;
+ }
+ body[data-page="edit"] .header-date {margin-right:auto;}
+}
+
+/* Six-column desktop card management; retain the continuous scrolling list. */
+@media (min-width:1100px) {
+ body[data-page="edit"] .admin-card-grid {
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  column-gap:16px;
+  row-gap:28px;
+ }
+ body[data-page="edit"] .admin-card-body .row {
+  gap:3px;
+ }
+ body[data-page="edit"] .admin-card-body .tiny-btn {
+  padding:6px 8px;
+  font-size:11px;
+ }
+}
+
+/* Admin card captions use the same hierarchy as the public gallery:
+   character above in near-black, outfit name below in muted gray. */
+body[data-page="edit"] .admin-card-grid .admin-title {
+ color:#292530;
+ font-size:13px;
+ font-weight:650;
+ line-height:1.45;
+ overflow-wrap:anywhere;
+}
+body[data-page="edit"] .admin-card-grid .admin-sub {
+ color:#76717d;
+ font-size:12px;
+ font-weight:400;
+ line-height:1.55;
+ margin:4px 0 8px;
+ overflow-wrap:anywhere;
+}
+@media(max-width:699px){
+ body[data-page="edit"] .admin-card-grid .admin-title {font-size:12px;}
+ body[data-page="edit"] .admin-card-grid .admin-sub {font-size:11px;}
+}
+
+/* Site A admin: visually distinguish non-public cards like Site B. */
+body[data-page="edit"] .site-a-unlisted .admin-image {
+ opacity:.55;
+}
+
+
+/* Public gallery: auto-load indicator for the next group of cards. */
+body[data-page="view"] .infinite-loader {
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ gap:9px;
+ min-height:48px;
+ padding:16px 0 26px;
+ color:#817a88;
+ font-size:12px;
+}
+body[data-page="view"] .infinite-loader[hidden] {display:none;}
+body[data-page="view"] .infinite-loader-dot {
+ width:9px;
+ height:9px;
+ flex:0 0 auto;
+ border-radius:50%;
+ background:var(--theme-color,#9f9aa8);
+ animation:freca-loader-pulse 1100ms ease-in-out infinite;
+}
+@keyframes freca-loader-pulse {
+ 0%,100% {opacity:.35; transform:scale(.8);}
+ 50% {opacity:1; transform:scale(1);}
+}
+@media (prefers-reduced-motion:reduce) {
+ body[data-page="view"] .infinite-loader-dot {animation:none;}
+}
