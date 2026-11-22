@@ -49,6 +49,79 @@ function hydrateOwnedImages(root=document){
   try{const url=await ownedImageURL(key);if(img.isConnected&&img.dataset.ownedOriginal===key)img.src=url;}catch(e){console.warn('所持コーデ画像を読み込めません',e);}
  });
 }
+const adminTabTokenKey='freca_site_d_admin_tab_token';
+const adminTabPasswordKey='freca_site_d_admin_tab_password';
+let tokenIssuedAt=0,refreshPromise=null;
+function clearAdminSession(){
+ token='';
+ tokenIssuedAt=0;
+ sessionStorage.removeItem(adminTabTokenKey);
+ sessionStorage.removeItem(adminTabPasswordKey);
+}
+async function loginForSession(password,includeAdmin=false){
+ const result=await api('login',{password,includeAdmin});
+ if(!result?.token)throw Error('認証情報を取得できません');
+ token=result.token;
+ tokenIssuedAt=Date.now();
+ sessionStorage.setItem(adminTabTokenKey,token);
+ return result;
+}
+async function refreshAdminToken(force=false){
+ if(S.isDemo())return;
+ const password=sessionStorage.getItem(adminTabPasswordKey);
+ if(!password)return;
+ if(!force&&token&&tokenIssuedAt&&Date.now()-tokenIssuedAt<45*60*1000)return;
+ if(!refreshPromise){
+  refreshPromise=(async()=>{
+   try{await loginForSession(password);}
+   catch(error){
+    clearAdminSession();
+    throw Error('管理パスワードの再認証に失敗しました：'+error.message);
+   }
+  })().finally(()=>{refreshPromise=null;});
+ }
+ await refreshPromise;
+}
+async function adminApi(action,payload={}){
+ await refreshAdminToken();
+ try{return await api(action,payload,token);}
+ catch(error){
+  // Retry once with a newly issued token if GAS rejected the current one.
+  if(!S.isDemo()&&sessionStorage.getItem(adminTabPasswordKey)&&
+     /認証|期限|ログイン|token|session|unauthori|expired/i.test(error.message)){
+   await refreshAdminToken(true);
+   return api(action,payload,token);
+  }
+  throw error;
+ }
+}
+async function restoreAdminTab(){
+ const password=sessionStorage.getItem(adminTabPasswordKey);
+ const savedToken=sessionStorage.getItem(adminTabTokenKey);
+ if(!password&&!savedToken){loginScreen();return;}
+ try{
+  let adminData=null;
+  if(password&&!S.isDemo()){
+   // A reload issues a fresh GAS token from the existing tab-scoped password.
+   const result=await loginForSession(password,true);
+   if(result.admin&&typeof result.admin==='object'&&Array.isArray(result.admin.cards)&&
+      Array.isArray(result.admin.owned)&&Array.isArray(result.admin.plans)&&
+      result.admin.colors&&typeof result.admin.colors==='object')adminData=result.admin;
+  }else{
+   token=savedToken||'demo';
+   tokenIssuedAt=0;
+  }
+  if(!adminData)adminData=await adminApi('admin');
+  if(!adminData||typeof adminData!=='object'||!Array.isArray(adminData.cards)||
+     !Array.isArray(adminData.owned)||!Array.isArray(adminData.plans))throw Error('管理データを取得できません');
+  db=S.sanitize(adminData);
+  savedSnapshot=S.sanitize(db);
+  dashboard();
+ }catch(error){
+  clearAdminSession();
+  loginScreen();
+ }
+}
 function loginScreen(){const demo=S.isDemo();$('#app').innerHTML=`<div class="auth-screen"><div class="login-panel"><h1>フレカ管理ログイン</h1><p class="note">${demo?'ローカル試作モード：最初のログイン時にデモ用パスワードを設定します。公開用の安全な認証ではありません。':'管理パスワードを入力してください。'}</p><form id="login-form"><label class="field">パスワード<span class="password-control"><input type="password" required minlength="4" autocomplete="current-password" id="password"><button id="password-peek" class="password-peek" type="button" aria-label="押している間パスワードを表示" title="押している間パスワードを表示"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label><button class="btn primary" type="submit">${demo?'デモ管理画面を開く':'ログイン'}</button><p class="note" id="login-error"></p></form><p class="note"><a href="index.html">フレカ閲覧ページに戻る</a></p></div></div>`;
 const secretInput=$('#password'),peekButton=$('#password-peek');
 const revealPassword=visible=>{
@@ -91,8 +164,12 @@ $('#login-form').onsubmit=async e=>{e.preventDefault();const pwd=$('#password').
    submit.textContent='データを読み込み中…';
    adminData=await api('admin',{},token);
   }
-  db=S.sanitize(adminData);savedSnapshot=S.sanitize(db);dashboard();
- }catch(err){errorLabel.textContent=err.message;}
+  db=S.sanitize(adminData);savedSnapshot=S.sanitize(db);
+  tokenIssuedAt=Date.now();
+  sessionStorage.setItem(adminTabPasswordKey,pwd);
+  sessionStorage.setItem(adminTabTokenKey,token);
+  dashboard();
+ }catch(err){clearAdminSession();errorLabel.textContent=err.message;}
  finally{busy=false;if(submit.isConnected){submit.disabled=false;submit.textContent=originalLabel;}}
 };
 }
@@ -115,7 +192,7 @@ function dashboard(){
  $('#drawer-close').onclick=()=>toggle(false);
  $$('[data-menu-screen]').forEach(b=>b.onclick=()=>{const screen=b.dataset.menuScreen;mode=screen==='cards'?'cards':'memo';memoTab=screen==='cards'?memoTab:screen;filter='';q='';toggle(false);draw();});
  $('#site-d-header-add').onclick=()=>{if(mode==='cards')openCardForm();};
- $('#logout').onclick=()=>{token='';loginScreen();};
+ $('#logout').onclick=()=>{if(pendingWrites){toast('保存処理が完了してからログアウトしてください');return;}clearAdminSession();loginScreen();};
  document.addEventListener('keydown',ev=>{if(ev.key==='Escape')toggle(false);});
  draw();
 }
@@ -140,13 +217,13 @@ function save(action='save',payload={}){
   try{
    let result;
    if(action!=='save'&&!S.isDemo()){
-    try{result=await api(action,payload,token);}
+    try{result=await adminApi(action,payload);}
     catch(error){
      // Keep compatibility with the original GAS until the new backend is deployed.
      if(!/invalid action/i.test(error.message))throw error;
-     result=await api('save',{data:snapshot},token);
+     result=await adminApi('save',{data:snapshot});
     }
-   }else result=await api('save',{data:snapshot},token);
+   }else result=await adminApi('save',{data:snapshot});
    savedSnapshot=S.sanitize({...snapshot,lastSavedAt:result?.savedAt||savedSnapshot.lastSavedAt});
    db.lastSavedAt=savedSnapshot.lastSavedAt;
    updateLastSaved();
@@ -157,7 +234,7 @@ function save(action='save',payload={}){
    draw();
    toast('保存失敗: '+error.message+'（変更を取り消しました）');
    if(!S.isDemo()&&/認証|期限|ログイン|token/i.test(error.message)){
-    token='';loginScreen();
+    clearAdminSession();loginScreen();
    }
    return false;
   }finally{pendingWrites--;updateLastSaved();}
@@ -383,7 +460,7 @@ function openCardForm(id=''){
       reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');
       reader.readAsDataURL(row.file);
      });
-     const result=await api('uploadImage',{filename:row.file.name,mimeType:row.file.type,base64:raw},token);
+     const result=await adminApi('uploadImage',{filename:row.file.name,mimeType:row.file.type,base64:raw});
      if(!result?.url||!/^https:\/\//.test(result.url))throw Error('画像URLが取得できませんでした');
      row.image=result.url;
      const original=entries.find(x=>x.key===row.key);
@@ -471,6 +548,6 @@ function initColors(){
 if(S.isDemo() && /^https?:$/.test(location.protocol) && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) {
  $('#app').innerHTML='<main class="auth-screen"><div class="login-panel"><h1>管理画面の準備中</h1><p class="note">GAS接続が未設定です。管理機能を公開する前にバックエンドの認証と保存先を設定してください。</p><p><a href="index.html">公開画面へ戻る</a></p></div></main>';
 } else {
- loginScreen();
+ restoreAdminTab();
 }
 })();
