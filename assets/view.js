@@ -22,7 +22,8 @@ menuBtn.onclick=()=>toggleMenu(!menuPanel.classList.contains('is-open'));
 menuScrim.onclick=()=>toggleMenu(false);
 $('#drawer-close').onclick=()=>toggleMenu(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')toggleMenu(false);});
-const nav=buildCharacterNav(c=>{character=c;page=1;render();},{colors});$('#character-navigation').innerHTML=nav.html;const navActions=nav.init($('#character-navigation'));
+const navRoot=$('#character-navigation');navRoot.style.visibility='hidden';
+const nav=buildCharacterNav(c=>{character=c;page=1;render();},{colors});navRoot.innerHTML=nav.html;
 function pages(current,total){if(total<=7)return Array.from({length:total},(_,i)=>i+1);const out=[1];let a=Math.max(2,current-1),b=Math.min(total-1,current+1);if(current<=3){a=2;b=4;}else if(current>=total-2){a=total-3;b=total-1;}if(a>2)out.push('…');for(let i=a;i<=b;i++)out.push(i);if(b<total-1)out.push('…');out.push(total);return out;}
 function render(){const filtered=cards.filter(x=>(!character||x.chara===character)&&(!query||norm(x.code).includes(norm(query))));const total=Math.max(1,Math.ceil(filtered.length/PAGE));page=Math.min(page,total);const rows=filtered.slice((page-1)*PAGE,page*PAGE);
 $('#grid').innerHTML=rows.length?rows.map(x=>`<article class="freca-card" data-id="${esc(x.id)}" style="--stagger:${Math.min(rows.indexOf(x),9)*32}ms"><div class="card-picture" data-id="${esc(x.id)}">${cardImage(x.image_url,x.code)}</div><div class="card-detail"><div class="card-chara">${esc(x.chara)}</div><div class="card-code">${esc(x.code)}</div></div></article>`).join(''):'<div class="placeholder-panel">カードがありません</div>';
@@ -30,5 +31,7 @@ $('#pager').innerHTML=total<=1?'':`<button data-page="${page-1}" ${page===1?'dis
 $$('#pager [data-page]').forEach(b=>b.addEventListener('click',()=>{if(b.disabled)return;page=+b.dataset.page;render();scrollTo({top:0,behavior:'smooth'});}));
 $$('.card-picture').forEach(el=>el.addEventListener('click',()=>{const x=cards.find(x=>String(x.id)===el.dataset.id);if(!x?.image_url)return;$('#full-image').src=x.image_url;$('#overlay').classList.remove('hidden');}));}
 $('#query').addEventListener('input',e=>{query=e.target.value;page=1;render();});$('#close').onclick=()=>$('#overlay').classList.add('hidden');$('#overlay').onclick=e=>{if(e.target.id==='overlay')$('#overlay').classList.add('hidden');};document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#overlay').classList.add('hidden')});
-try{const d=await api('public');cards=(Array.isArray(d.cards)?d.cards:[]).filter(x=>x&&typeof x.code==='string');colors={...colors,...d.colors};lastCardsUpdated=d.lastCardsUpdated||'';navActions.updateColors(colors);$('#update').textContent=dateUpdate();render();}catch(e){console.error(e);$('#grid').innerHTML=`<div class="placeholder-panel">読み込みに失敗しました。<br>${esc(e.message)}</div>`;}
+try{const d=await api('public');cards=(Array.isArray(d.cards)?d.cards:[]).filter(x=>x&&typeof x.code==='string');Object.assign(colors,d.colors||{});lastCardsUpdated=d.lastCardsUpdated||'';
+// Apply the saved colors before the navigation is painted. No flash of default colors.
+nav.init(navRoot);navRoot.style.visibility='';$('#update').textContent=dateUpdate();render();}catch(e){console.error(e);nav.init(navRoot);navRoot.style.visibility='';$('#grid').innerHTML=`<div class="placeholder-panel">読み込みに失敗しました。<br>${esc(e.message)}</div>`;}
 })();
